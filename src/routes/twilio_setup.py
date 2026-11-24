@@ -20,7 +20,7 @@ async def voice():
     twiml = """
     <Response>
         <Connect>
-            <Stream url="wss://https://0zmgw9cz-8000.inc1.devtunnels.ms//twilio/media" />
+            <Stream url="wss://0zmgw9cz-8000.inc1.devtunnels.ms/twilio/media" />
         </Connect>
     </Response>
     """
