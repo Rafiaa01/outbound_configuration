@@ -6,6 +6,7 @@ import os
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
+from src.chat.session_manager import create_session
 from src.services.stt import (
     dg_client,
     register_transcription_events,
@@ -63,14 +64,16 @@ async def media_stream(websocket: WebSocket):
     stream_info = {"stream_sid": None}
     try:
         async with dg_client.listen.v1.connect(
-            model="nova-3",
-            encoding="mulaw",
-            sample_rate=8000,
-            channels=1,
-            interim_results=True,
-            smart_format=True,
-            punctuate=True,
-        ) as dg_connection:
+        model="nova-3",
+        encoding="mulaw",
+        sample_rate=8000,
+        channels=1,
+        interim_results=True,
+        smart_format=True,
+        punctuate=True,
+        endpointing=1000,
+        utterance_end_ms="1000",
+    ) as dg_connection:
             log.info("[DEEPGRAM] Connection created")
 
             register_transcription_events(
@@ -94,17 +97,19 @@ async def media_stream(websocket: WebSocket):
                     start = data["start"]
                     stream_sid = start["streamSid"]
                     call_sid = start.get("callSid")
-                    
+
+                    # Create a RAG session for this call
+                    session = create_session()
+                    stream_info["session_id"] = session["session_id"]
+
                     # Save Stream SID for sending audio back to Twilio
                     stream_info["stream_sid"] = stream_sid
-                    
+
                     log.info("[media] Stream started")
                     log.info("[media] Call SID: %s", call_sid)
                     log.info("[media] Stream SID: %s", stream_sid)
-                    log.info("[media] Stream started: %s", stream_sid)
-
+                    log.info("[RAG] Session created: %s", session["session_id"])
                     log.info("[media] Audio format: %s", start.get("mediaFormat"))
-
                 elif event == "media":
                     chunks += 1
 

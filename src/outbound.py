@@ -43,8 +43,6 @@ def mask(value: str) -> str:
 def check_env(recipient: str) -> bool:
     log.info("---- 1. Checking .env ----")
     ok = True
-    log.info("TWILIO_ACCOUNT_SID = %s", mask(ACCOUNT_SID))
-    log.info("TWILIO_AUTH_TOKEN  = %s", mask(AUTH_TOKEN))
     log.info("TWILIO_PHONE_NUMBER = %s", TWILIO_NUMBER or "(missing)")
     log.info("Recipient           = %s", recipient or "(missing)")
     log.info("Stream URL          = %s", STREAM_URL)

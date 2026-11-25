@@ -6,9 +6,12 @@ import os
 
 from deepgram import AsyncDeepgramClient
 from deepgram.core.events import EventType
-from deepgram.listen.v1.types import ListenV1Results
+from deepgram.listen.v1.types import (
+    ListenV1Results,
+    ListenV1UtteranceEnd,
+)
 from dotenv import load_dotenv
-from src.services.openai_service import generate_response
+from src.chat.chat_services import chat_with_history
 from src.services.tts import generate_speech
 
 load_dotenv()
@@ -23,17 +26,34 @@ if not api_key:
 dg_client = AsyncDeepgramClient(api_key=api_key)
 
 
-async def process_transcript(transcript, websocket, stream_info, playback_lock):
+async def process_transcript(
+    transcript,
+    websocket,
+    stream_info,
+    playback_lock
+):
     try:
         logger.info("[USER]: %s", transcript)
 
-        answer = await generate_response(transcript)
-        logger.info("[OPENAI RESPONSE]: %s", answer)
+        session_id = stream_info.get("session_id")
 
+        if not session_id:
+            logger.error("[RAG] Session ID not available")
+            return
+
+        # Get answer from RAG
+        result = await chat_with_history(session_id, transcript)
+        answer = result["answer"]
+
+        logger.info("[RAG] Answer: %s", answer)
+
+        # Generate speech using ElevenLabs
         logger.info("[ELEVENLABS] Generating audio...")
 
-        # Run synchronous ElevenLabs SDK in a worker thread.
-        audio_bytes = await asyncio.to_thread(generate_speech, answer)
+        audio_bytes = await asyncio.to_thread(
+            generate_speech,
+            answer
+        )
 
         logger.info("[ELEVENLABS] Audio generated!")
 
@@ -43,10 +63,11 @@ async def process_transcript(transcript, websocket, stream_info, playback_lock):
             logger.error("[TWILIO] Stream SID not available")
             return
 
-        # Send audio to Twilio in 20 ms chunks.
+        # Send audio back to Twilio
         async with playback_lock:
             for i in range(0, len(audio_bytes), 160):
                 chunk = audio_bytes[i:i + 160]
+
                 payload = base64.b64encode(chunk).decode("ascii")
 
                 await websocket.send_json({
@@ -66,9 +87,35 @@ async def process_transcript(transcript, websocket, stream_info, playback_lock):
 
 
 def register_transcription_events(connection, websocket, stream_info):
+    
     playback_lock = asyncio.Lock()
+    transcript_buffer = []
 
     def on_transcript(message):
+
+        # Handle Utterance End
+        if isinstance(message, ListenV1UtteranceEnd):
+
+            if transcript_buffer:
+                complete_transcript = " ".join(transcript_buffer)
+                transcript_buffer.clear()
+
+                logger.info(
+                    "[COMPLETE TRANSCRIPT]: %s",
+                    complete_transcript
+                )
+
+                asyncio.create_task(
+                    process_transcript(
+                        complete_transcript,
+                        websocket,
+                        stream_info,
+                        playback_lock
+                    )
+                )
+
+            return
+
         if not isinstance(message, ListenV1Results):
             return
 
@@ -81,16 +128,28 @@ def register_transcription_events(connection, websocket, stream_info):
             return
 
         if message.is_final:
-            logger.info("[FINAL TRANSCRIPT]: %s", transcript)
 
-            asyncio.create_task(
-                process_transcript(
-                    transcript,
-                    websocket,
-                    stream_info,
-                    playback_lock
+            transcript_buffer.append(transcript)
+
+            if getattr(message, "speech_final", False):
+
+                complete_transcript = " ".join(transcript_buffer)
+                transcript_buffer.clear()
+
+                logger.info(
+                    "[COMPLETE TRANSCRIPT]: %s",
+                    complete_transcript
                 )
-            )
+
+                asyncio.create_task(
+                    process_transcript(
+                        complete_transcript,
+                        websocket,
+                        stream_info,
+                        playback_lock
+                    )
+                )
+
         else:
             logger.debug("[INTERIM]: %s", transcript)
 

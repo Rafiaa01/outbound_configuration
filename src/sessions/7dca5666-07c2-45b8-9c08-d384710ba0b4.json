@@ -1,0 +1,21 @@
+{
+    "session_id": "7dca5666-07c2-45b8-9c08-d384710ba0b4",
+    "history": [
+        {
+            "role": "user",
+            "content": "Hello?"
+        },
+        {
+            "role": "assistant",
+            "content": "I could not find this information in the employee policy document."
+        },
+        {
+            "role": "user",
+            "content": "Can you tell me about how many years two employee has in a year?"
+        },
+        {
+            "role": "assistant",
+            "content": "I could not find this information in the employee policy document."
+        }
+    ]
+}

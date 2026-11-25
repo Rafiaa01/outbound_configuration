@@ -2,9 +2,9 @@ import os
 
 from dotenv import load_dotenv
 from src.auth.client import client
+from src.prompt.assistant_prompt import EMPLOYEE_POLICY_ASSISTANT_PROMPT
 
 load_dotenv()
-
 
 
 api_key = os.getenv("OPENAI_API_KEY")
@@ -18,11 +18,7 @@ async def generate_response(user_text: str) -> str:
 
     response = await client.responses.create(
         model="gpt-4o-mini",
-        instructions=(
-            "You are a helpful AI voice assistant. "
-            "Keep your answers natural, conversational, and concise "
-            "because they will be spoken aloud."
-        ),
+        instructions=EMPLOYEE_POLICY_ASSISTANT_PROMPT,
         input=user_text,
     )
 
