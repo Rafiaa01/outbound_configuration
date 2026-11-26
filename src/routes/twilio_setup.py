@@ -28,6 +28,7 @@ async def voice(request: Request):
         form.get("From"),
         form.get("AnsweredBy"),
     )
+
     twiml = f"""<Response>
         <Connect>
             <Stream url="wss://{PUBLIC_HOST}/twilio/media" />
@@ -61,26 +62,45 @@ async def media_stream(websocket: WebSocket):
     chunks = 0
     stream_sid = None
     listener_task = None
-    stream_info = {"stream_sid": None}
+
+    stream_info = {
+        "stream_sid": None,
+        "call_sid": None,
+        "session_id": None,
+        "pending_mark": None,
+    }
+
     try:
         async with dg_client.listen.v1.connect(
-        model="nova-3",
-        encoding="mulaw",
-        sample_rate=8000,
-        channels=1,
-        interim_results=True,
-        smart_format=True,
-        punctuate=True,
-        endpointing=1000,
-        utterance_end_ms="1000",
-    ) as dg_connection:
+            model="nova-3",
+            language="en",
+            encoding="mulaw",
+            sample_rate=8000,
+            channels=1,
+            interim_results=True,
+            smart_format=True,
+            punctuate=True,
+            endpointing=1000,
+            utterance_end_ms="1000",
+            keyterm=[
+                "annual leave",
+                "sick leave",
+                "casual leave",
+                "leave balance",
+                "maternity leave",
+                "paternity leave",
+                "employee handbook",
+                "probation period",
+                "notice period",
+                "working hours",
+                "public holiday",
+                "payroll",
+            ],
+        ) as dg_connection:
             log.info("[DEEPGRAM] Connection created")
 
-            register_transcription_events(
-            dg_connection,
-            websocket,
-            stream_info
-        )
+            register_transcription_events(dg_connection, websocket, stream_info)
+
             listener_task = asyncio.create_task(dg_connection.start_listening())
 
             log.info("[DEEPGRAM] Listening started")
@@ -90,31 +110,55 @@ async def media_stream(websocket: WebSocket):
 
                 event = data.get("event")
 
+                # Handle Twilio playback acknowledgment
+                if event == "mark":
+                    mark_name = data.get("mark", {}).get("name")
+
+                    pending_mark = stream_info.get("pending_mark")
+
+                    if (
+                        pending_mark
+                        and pending_mark["name"] == mark_name
+                        and not pending_mark["future"].done()
+                    ):
+                        pending_mark["future"].set_result(True)
+
+                        log.info("[TWILIO] Playback mark acknowledged: %s", mark_name)
+
+                    continue
+
                 if event == "connected":
                     log.info("[media] Twilio connected")
 
                 elif event == "start":
                     start = data["start"]
+
                     stream_sid = start["streamSid"]
                     call_sid = start.get("callSid")
 
+                    # Save Twilio identifiers
+                    stream_info["stream_sid"] = stream_sid
+                    stream_info["call_sid"] = call_sid
+
                     # Create a RAG session for this call
                     session = create_session()
-                    stream_info["session_id"] = session["session_id"]
 
-                    # Save Stream SID for sending audio back to Twilio
-                    stream_info["stream_sid"] = stream_sid
+                    stream_info["session_id"] = session["session_id"]
 
                     log.info("[media] Stream started")
                     log.info("[media] Call SID: %s", call_sid)
                     log.info("[media] Stream SID: %s", stream_sid)
+
                     log.info("[RAG] Session created: %s", session["session_id"])
+
                     log.info("[media] Audio format: %s", start.get("mediaFormat"))
+
                 elif event == "media":
                     chunks += 1
 
                     # Decode Twilio's Base64 audio payload
                     payload = data["media"]["payload"]
+
                     audio_bytes = base64.b64decode(payload)
 
                     # Send audio bytes to Deepgram
@@ -144,6 +188,7 @@ async def media_stream(websocket: WebSocket):
 
             try:
                 await listener_task
+
             except asyncio.CancelledError:
                 pass
 

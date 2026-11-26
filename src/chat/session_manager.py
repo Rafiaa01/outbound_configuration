@@ -7,10 +7,7 @@ from src.auth.config import SESSIONS_DIR
 def create_session():
     session_id = str(uuid.uuid4())
 
-    session_data = {
-        "session_id": session_id,
-        "history": []
-    }
+    session_data = {"session_id": session_id, "history": []}
 
     session_file = SESSIONS_DIR / f"{session_id}.json"
 
@@ -29,13 +26,11 @@ def get_session(session_id):
     with open(session_file, "r", encoding="utf-8") as file:
         return json.load(file)
 
+
 def update_session(session_id, history):
     session_file = SESSIONS_DIR / f"{session_id}.json"
 
-    session_data = {
-        "session_id": session_id,
-        "history": history
-    }
+    session_data = {"session_id": session_id, "history": history}
 
     with open(session_file, "w", encoding="utf-8") as file:
         json.dump(session_data, file, indent=4, ensure_ascii=False)

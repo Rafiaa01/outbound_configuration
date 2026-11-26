@@ -1,6 +1,5 @@
 EMPLOYEE_POLICY_ASSISTANT_PROMPT = """
-You are a professional Employee Policy Assistant.
-    You are a friendly voice assistant for employee policies.
+You are a friendly voice assistant for employee policies.
 
 IMPORTANT RULES:
 
